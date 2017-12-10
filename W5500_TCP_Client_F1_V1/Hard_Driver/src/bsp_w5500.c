@@ -6,37 +6,35 @@
  */
 
 #include "bsp_w5500.h"
+
+// W5500 include
 #include "wizchip_conf.h"
 #include "dhcp.h"
 #include "socket.h"
-//
+
+//printf   include
 #include "stdio.h"
 
-//
+// nthw include
 #include "nt_stm32f1hw_systick.h"
 
+//宏定义w5500使用的延时函数
 #define bsp_w5500_delayms nthw_systick_delay_ms
-//#define SOCKET_DHCP   0
-
+//接受数据的数组长度
 #define DATA_BUF_SIZE   1024
-
+//宏定义w5500使用的打印函数
 #define bsp_w5500_log(x)     printf("============%s============\r\n",x);
 #define bsp_w5500_log_message  printf
-
+//宏定义 当前模式
 #define DEBUG 1
 
-
-
-
-
+//接受数据的数组
+uint8_t gDATABUF[1024];
+//临时变量 处理中间数据
 static uint8_t tmp;
+//socket缓存区数组
 static uint8_t memsize[2][8] = { {1,1,1,1,1,1,1,1},{1,1,1,1,1,1,1,1}};
-static uint8_t tmp;
-static 	uint8_t my_dhcp_retry = 0;
-
-
-uint8_t gDATABUF[DATA_BUF_SIZE];
-
+//W5500 配置信息
 static wiz_NetInfo gWIZNETINFO = { .mac = {0x00, 0x08, 0xdc,0x00, 0x01, 0x25},
         .ip = {192, 168, 1, 123},
         .sn = {255,255,255,0},
@@ -47,16 +45,42 @@ static wiz_NetInfo gWIZNETINFO = { .mac = {0x00, 0x08, 0xdc,0x00, 0x01, 0x25},
 
 static void bsp_w5500_network_init(void);
 
+/**
+* @name bsp_w5500_spi_cs_select
+* @Description W5500片选为低
+* @param[in]  void
+* @param[out] void
+* @retval void
+* @par 修改日志
+*      XXX于201X-XX-XX创建
+*/
 static void bsp_w5500_spi_cs_select(void)
 {
 	PAOUT(4,0);
 }
-
+/**
+* @name bsp_w5500_spi_cs_deselect
+* @Description W5500片选为高
+* @param[in]  void
+* @param[out] void
+* @retval void
+* @par 修改日志
+*      XXX于201X-XX-XX创建
+*/
 static void bsp_w5500_spi_cs_deselect(void)
 {
 	PAOUT(4,1);
 }
 
+/**
+* @name bsp_w5500_ip_conflict
+* @Description W5500 dhcp 失败的回调函数
+* @param[in]  void
+* @param[out] void
+* @retval void
+* @par 修改日志
+*      XXX于201X-XX-XX创建
+*/
 static void bsp_w5500_ip_conflict(void)
 {
 	bsp_w5500_log("CONFLICT IP from DHCP\r\n");
@@ -64,6 +88,15 @@ static void bsp_w5500_ip_conflict(void)
 	while(1); // this example is halt.
 }
 
+/**
+* @name bsp_w5500_ip_assign
+* @Description W5500 dhcp 成功的回调函数
+* @param[in]  void
+* @param[out] void
+* @retval void
+* @par 修改日志
+*      XXX于201X-XX-XX创建
+*/
 static void bsp_w5500_ip_assign(void)
 {
 
@@ -77,6 +110,16 @@ static void bsp_w5500_ip_assign(void)
 	bsp_w5500_log_message("DHCP LEASED TIME : %d Sec.\r\n",(int) getDHCPLeasetime());
 }
 
+/**
+* @name bsp_w5500_network_init
+* @Description 在W5500 dhcp 成功的回调函数中调用
+* 			用于将dhcp之后的网络参数进行保存
+* @param[in]  void
+* @param[out] void
+* @retval void
+* @par 修改日志
+*      XXX于201X-XX-XX创建
+*/
 static void bsp_w5500_network_init(void)
 {
 	uint8_t tmpstr[6] = {0};
@@ -104,6 +147,19 @@ static void bsp_w5500_network_init(void)
 	bsp_w5500_log_message("===========================\r\n");
 }
 
+/**
+* @name bsp_w5500_init
+* @Description 用于W5500模块的初始化
+* 			   1. spi和cs的GPIO的设置和SPI模式的设置
+* 			   2. SOCKET缓存区初始化
+* 			   3. PHY物理层连接状态检查
+* 			   4. 设置MAC
+* @param[in]  void
+* @param[out] void
+* @retval void
+* @par 修改日志
+*      XXX于201X-XX-XX创建
+*/
 extern void bsp_w5500_init(void)
 {
 	bsp_w5500_log("bsp_w5500_init");
@@ -141,14 +197,30 @@ extern void bsp_w5500_init(void)
 
 //返回 1 -- 成功
 // 2 -- 最大次数内失败
+/**
+* @name bsp_w5500_dhcp
+* @Description 用于W5500模块的dhcp
+* 			       在完成w5500 init之后调用
+* @param[in]  sock 通道号[0,7]
+* 			  max_dhcp_retry 最大dhcp重试次数
+* @param[out] 1 -- 成功
+* 			  other -- 失败
+* @retval void
+* @par 修改日志
+*      XXX于201X-XX-XX创建
+*/
 extern uint8_t bsp_w5500_dhcp(uint8_t sock,uint8_t max_dhcp_retry)
 {
-	uint8_t isOverDhcp = 0;
+
+	uint8_t isOverDhcp = 0;//是否DHCP完成标志位
+	uint8_t my_dhcp_retry = 0;//dhcp进行次数
 	bsp_w5500_log("bsp_w5500_dhcp");
 
 
 	bsp_w5500_log("1/3DHCP_init");
+	//初始化DHCP
 	DHCP_init(sock, gDATABUF);
+	//设置DHCP不同结果的回调函数
 	reg_dhcp_cbfunc(bsp_w5500_ip_assign, bsp_w5500_ip_assign, bsp_w5500_ip_conflict);//注册DHCP回调函数
 
 	//DHCP_run

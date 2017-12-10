@@ -1,1 +1,4 @@
-# å…³äºŽä½¿ç”¨DHCPèŽ·å–ipçš„ä¾‹å­
+# TCP Client
+## 1.ÊµÏÖdhcp»ñÈ¡ip
+## 2.ÊµÏÖsocketÁ¬½Ó·þÎñÆ÷£¬²¢½«½ÓÊÜµÄÊý¾Ý·µ»Ø
+
