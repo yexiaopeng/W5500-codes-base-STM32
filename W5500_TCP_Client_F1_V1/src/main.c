@@ -64,6 +64,7 @@ static void loop(void)
 	{
 		printf("=============DHCP FAILURE==============\r\n");
 	}
+loop_connect:
 	//½¨Á¢socket
 	ret = socket(dhcp_socket,Sn_MR_TCP,21688,0x00);
 	if(ret != dhcp_socket){
@@ -75,10 +76,13 @@ static void loop(void)
 	printf("=============socket ok ==============\r\n");
 
 	uint8_t DstIP[]={192,168,9,75};
+
+
 	ret = connect(dhcp_socket,DstIP,31688);
 	if(ret != SOCK_OK){
 		printf("%d:Socket Connect Error\r\n",dhcp_socket);
-		while(1);
+		nthw_systick_delay_ms(1000);
+		goto loop_connect;
 	}
 	printf("=============connect %s:%d ok ==============\r\n",DstIP,31688);
 
